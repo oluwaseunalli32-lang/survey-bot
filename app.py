@@ -63,16 +63,29 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state_str, _answer = query.data.split(":")
     state = int(state_str)
 
-    # Send the image right after Q3 is answered
+    next_state = state + 1
+
+    # When Q3 is answered, send the image and Q4 together as ONE message
     if state == Q3:
+        question, options = QUESTIONS[Q4]
+        keyboard = [
+            [InlineKeyboardButton(opt, callback_data=f"{Q4}:{opt}")] for opt in options
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             with open(IMAGE_PATH, "rb") as photo:
-                await query.message.reply_photo(photo=photo, caption=IMAGE_CAPTION)
+                await query.message.reply_photo(
+                    photo=photo,
+                    caption=f"{IMAGE_CAPTION}\n\n{question}",
+                    reply_markup=reply_markup,
+                )
         except FileNotFoundError:
             logger.error("Image %s not found — sending text instead", IMAGE_PATH)
-            await query.message.reply_text(IMAGE_CAPTION)
+            await query.message.reply_text(
+                f"{IMAGE_CAPTION}\n\n{question}", reply_markup=reply_markup
+            )
+        return Q4
 
-    next_state = state + 1
     if next_state in QUESTIONS:
         return await ask_question(update, context, next_state)
 
@@ -127,6 +140,9 @@ async def hourly_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = Application.builder().token(TOKEN).build()
+
+    # Clear any leftover webhook so polling can't conflict with a stale webhook
+    application.bot.delete_webhook(drop_pending_updates=True)
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
