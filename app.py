@@ -18,9 +18,9 @@ TOKEN = os.environ.get("BOT_TOKEN")
 A, B, C, D, E, F, G, H = range(8)
 
 # ─── Assets (upload these to your repo root, same folder as app.py) ─────
-PROOF_1 = "proof_screenshot_1.png"
-PROOF_2 = "proof_screenshot_2.png"
-ACCOUNT_ID_EXAMPLE = "account_id_example.png"
+PROOF_1 = "proof_screenshot_1.jpeg"
+PROOF_2 = "proof_screenshot_2.jpeg"
+ACCOUNT_ID_EXAMPLE = "account_id_example.jpeg"
 
 # ─── Links ────────────────────────────────────────────────────────────────
 WINGO_URL = (
