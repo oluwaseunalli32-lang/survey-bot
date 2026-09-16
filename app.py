@@ -1,5 +1,4 @@
 import os
-import asyncio
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -15,155 +14,270 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
-# Conversation states (Q1 = 0, Q2 = 1, Q3 = 2, Q4 = 3, DONE = 4)
-Q1, Q2, Q3, Q4, DONE = range(5)
+# Conversation states (A = 0 … H = 7)
+A, B, C, D, E, F, G, H = range(8)
 
-QUESTIONS = {
-    Q1: ("Do you want to earn money online?", ["Yes", "No"]),
-    Q2: ("Are you willing to join a live call?", ["Yes", "No"]),
-    Q3: ("Are you ready to explore a new p2e game?", ["Yes", "No"]),
-    Q4: ("Will you join our Telegram channel?", ["Yes", "No"]),
-}
+# ─── Assets (upload these to your repo root, same folder as app.py) ─────
+PROOF_1 = "proof_screenshot_1.png"
+PROOF_2 = "proof_screenshot_2.png"
+ACCOUNT_ID_EXAMPLE = "account_id_example.png"
 
-CHANNEL_LINK = "https://t.me/dailyplug37"
-IMAGE_PATH = "survey_image.png"
-IMAGE_CAPTION = "Did you know you can make up to ₦300k monthly?"
+# ─── Links ────────────────────────────────────────────────────────────────
+WINGO_URL = (
+    "https://t.me/WinGo_funBot/GAME?startapp="
+    "152284909961c9c9c39ec841604b9a7604ad39803da3bbbe1d3e1c36d199bcfa"
+)
+ADMIN_URL = "https://t.me/ads2defiCEO"
 
-# In-memory store (resets when the worker restarts)
-completed_users = set()
+# ─── Text content ────────────────────────────────────────────────────────
+STEP_A_TEXT = (
+    "🎮 *New Opportunity!*\n\n"
+    "There's a new opportunity to earn money by playing games. "
+    "Here's proof of a user who earned money from the platform."
+)
+STEP_B_TEXT = (
+    "💰 *Here's a Real Withdrawal*\n\n"
+    "This is what one of our users withdrew just 2 hours after playing."
+)
+STEP_C_TEXT = (
+    "🎮 *Play. Earn. Withdraw.*\n\n"
+    "This is an opportunity to earn money by simply playing games. "
+    "Once you complete the required activity, your earnings can be "
+    "processed for withdrawal within 2 hours."
+)
+STEP_D_TEXT = (
+    "🔥 *You're almost there!*\n\n"
+    "You're just one step away from getting started and potentially "
+    "earning up to ₦29,000 from the available game activities."
+)
+STEP_E_TEXT = (
+    "💰 *Getting Started*\n\n"
+    "To access the game, the platform requires a ₦3,200 deposit.\n\n"
+    "Don't worry — our team will fund your account so you can get started."
+)
+STEP_F_TEXT = (
+    "🎮 *That's all you need to do!*\n\n"
+    "Play the game, earn your rewards, and request your withdrawal. "
+    "Withdrawals are expected to be processed within 2 hours, subject to "
+    "the platform's terms and requirements."
+)
+STEP_G_TEXT = (
+    "🚀 *Create Your Account*\n\n"
+    "Sign up on Wingo to start playing and earning."
+)
+WINGO_SHARE_TEXT = (
+    "🔥 I have won $12!\n"
+    "👇 Click the link to help me win more!\n"
+    "💰 Click the link to start playing and see what you can earn!"
+)
+STEP_H_TEXT = (
+    "✅ *Almost Done!*\n\n"
+    "Send your Wingo Account ID to our admin so your account can be funded.\n\n"
+    "Please make sure you send the correct Account ID shown in the "
+    "registration/account section."
+)
 
-def fmt_time(seconds: int) -> str:
-    h, rem = divmod(seconds, 3600)
-    m, s = divmod(rem, 60)
-    return f"⏳ Countdown: {h:02d}:{m:02d}:{s:02d}"
 
+# ─── Helpers ─────────────────────────────────────────────────────────────
+def kb(*rows):
+    """Build an InlineKeyboardMarkup from rows of (text, callback_or_url) tuples."""
+    keyboard = []
+    for row in rows:
+        line = []
+        for label, value in row:
+            if value.startswith("http"):
+                line.append(InlineKeyboardButton(label, url=value))
+            else:
+                line.append(InlineKeyboardButton(label, callback_data=value))
+        keyboard.append(line)
+    return InlineKeyboardMarkup(keyboard)
+
+
+# ─── Step A ──────────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Welcome! Please answer the following questions to qualify."
-    )
-    return await ask_question(update, context, Q1)
-
-async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE, state: int):
-    question, options = QUESTIONS[state]
-    keyboard = [
-        [InlineKeyboardButton(opt, callback_data=f"{state}:{opt}")] for opt in options
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    if update.callback_query:
-        await update.callback_query.edit_message_text(question, reply_markup=reply_markup)
-    else:
-        await update.message.reply_text(question, reply_markup=reply_markup)
-    return state
-
-async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    logger.info("Received callback: %s", query.data)
-    await query.answer()
-
-    state_str, _answer = query.data.split(":")
-    state = int(state_str)
-    next_state = state + 1
-
-    # When Q3 is answered, send the image and Q4 together as ONE message
-    if state == Q3:
-        question, options = QUESTIONS[Q4]
-        keyboard = [
-            [InlineKeyboardButton(opt, callback_data=f"{Q4}:{opt}")] for opt in options
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        try:
-            with open(IMAGE_PATH, "rb") as photo:
-                await query.message.reply_photo(
-                    photo=photo,
-                    caption=f"{IMAGE_CAPTION}\n\n{question}",
-                    reply_markup=reply_markup,
-                )
-        except FileNotFoundError:
-            logger.error("Image %s not found — sending text instead", IMAGE_PATH)
-            await query.message.reply_text(
-                f"{IMAGE_CAPTION}\n\n{question}", reply_markup=reply_markup
+    """Entry point: send Step A with proof screenshot 1."""
+    markup = kb([("Learn More", "a_learn"), ("No, Thanks", "a_no")])
+    try:
+        with open(PROOF_1, "rb") as photo:
+            await update.message.reply_photo(
+                photo=photo, caption=STEP_A_TEXT,
+                parse_mode="Markdown", reply_markup=markup,
             )
-        return Q4
+    except FileNotFoundError:
+        logger.error("Missing %s — sending text only", PROOF_1)
+        await update.message.reply_text(
+            STEP_A_TEXT, parse_mode="Markdown", reply_markup=markup,
+        )
+    return A
 
-    if next_state in QUESTIONS:
-        return await ask_question(update, context, next_state)
 
-    # All questions answered — send a NEW message (do NOT edit the photo message)
-    chat_id = query.message.chat_id
-    completed_users.add(chat_id)
+async def step_a_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    # Remove buttons from Step A so they can't be tapped again
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            f"✅ Thank you! You qualify.\n\n"
-            f"Here is your channel link: {CHANNEL_LINK}\n\n"
-            "Your countdown is starting below 👇"
+    if query.data == "a_no":
+        await query.message.reply_text("No problem. Thanks for your time!")
+        return ConversationHandler.END
+
+    # "Learn More" → Step B
+    markup = kb([("Tell Me More", "b_more")])
+    try:
+        with open(PROOF_2, "rb") as photo:
+            await query.message.reply_photo(
+                photo=photo, caption=STEP_B_TEXT,
+                parse_mode="Markdown", reply_markup=markup,
+            )
+    except FileNotFoundError:
+        logger.error("Missing %s — sending text only", PROOF_2)
+        await query.message.reply_text(
+            STEP_B_TEXT, parse_mode="Markdown", reply_markup=markup,
+        )
+    return B
+
+
+# ─── Step B ──────────────────────────────────────────────────────────────
+async def step_b_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        STEP_C_TEXT, parse_mode="Markdown",
+        reply_markup=kb([("Continue", "c_next")]),
+    )
+    return C
+
+
+# ─── Step C ──────────────────────────────────────────────────────────────
+async def step_c_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        STEP_D_TEXT, parse_mode="Markdown",
+        reply_markup=kb([("Continue", "d_next")]),
+    )
+    return D
+
+
+# ─── Step D ──────────────────────────────────────────────────────────────
+async def step_d_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        STEP_E_TEXT, parse_mode="Markdown",
+        reply_markup=kb([("Continue", "e_next")]),
+    )
+    return E
+
+
+# ─── Step E ──────────────────────────────────────────────────────────────
+async def step_e_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        STEP_F_TEXT, parse_mode="Markdown",
+        reply_markup=kb([("Continue — I'm Ready", "f_next")]),
+    )
+    return F
+
+
+# ─── Step F ──────────────────────────────────────────────────────────────
+async def step_f_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        STEP_G_TEXT, parse_mode="Markdown",
+        reply_markup=kb(
+            [("Go to Wingo", "g_wingo")],
+            [("I've Finished Signing Up", "g_done")],
         ),
     )
-    context.job_queue.run_once(countdown_job, 1, data=chat_id)
-    return DONE
+    return G
 
-async def countdown_job(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.data
-    total = 6 * 60 * 60  # 6 hours in seconds
-    msg = await context.bot.send_message(chat_id, fmt_time(total))
 
-    remaining = total
-    while remaining > 0:
-        # 60s steps normally, 5s steps in the final minute (avoids flood limits)
-        step = 5 if remaining <= 60 else 60
-        await asyncio.sleep(step)
-        remaining = max(remaining - step, 0)
-        try:
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=msg.message_id,
-                text=fmt_time(remaining),
+# ─── Step G ──────────────────────────────────────────────────────────────
+async def step_g_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "g_wingo":
+        # Send the $12 win/share message with a URL button to open Wingo
+        await query.message.reply_text(
+            WINGO_SHARE_TEXT,
+            reply_markup=kb([("🎮 Open Wingo", WINGO_URL)]),
+        )
+        # Stay in G — user can still tap "I've Finished Signing Up"
+        return G
+
+    # "I've Finished Signing Up" → Step H
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    markup = kb([("Message Admin", ADMIN_URL)])
+    try:
+        with open(ACCOUNT_ID_EXAMPLE, "rb") as photo:
+            await query.message.reply_photo(
+                photo=photo, caption=STEP_H_TEXT,
+                parse_mode="Markdown", reply_markup=markup,
             )
-        except Exception as e:
-            logger.warning("Countdown edit failed: %s", e)
+    except FileNotFoundError:
+        logger.error("Missing %s — sending text only", ACCOUNT_ID_EXAMPLE)
+        await query.message.reply_text(
+            STEP_H_TEXT, parse_mode="Markdown", reply_markup=markup,
+        )
+    return H
 
-    await context.bot.send_message(
-        chat_id,
-        "🎉 Countdown finished! The live call is starting now. Stay tuned.",
-    )
 
-async def hourly_reminder(context: ContextTypes.DEFAULT_TYPE):
-    if not completed_users:
-        return
-    text = (
-        "📢 Reminder: Once we hit 10 joins, we host the live call tomorrow "
-        "17th at 11:00 AM and 7:00 PM."
-    )
-    for chat_id in list(completed_users):
-        try:
-            await context.bot.send_message(chat_id, text)
-        except Exception as e:
-            logger.warning("Reminder to %s failed: %s", chat_id, e)
-
+# ─── Main ────────────────────────────────────────────────────────────────
 def main():
     application = Application.builder().token(TOKEN).build()
 
-    # Clear any leftover webhook so polling can't conflict with a stale webhook
+    # Clear any leftover webhook so polling can't conflict with a stale one
     application.bot.delete_webhook(drop_pending_updates=True)
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            Q1: [CallbackQueryHandler(handle_answer, pattern=r"^0:")],
-            Q2: [CallbackQueryHandler(handle_answer, pattern=r"^1:")],
-            Q3: [CallbackQueryHandler(handle_answer, pattern=r"^2:")],
-            Q4: [CallbackQueryHandler(handle_answer, pattern=r"^3:")],
+            A: [CallbackQueryHandler(step_a_choice, pattern=r"^a_")],
+            B: [CallbackQueryHandler(step_b_choice, pattern=r"^b_")],
+            C: [CallbackQueryHandler(step_c_choice, pattern=r"^c_")],
+            D: [CallbackQueryHandler(step_d_choice, pattern=r"^d_")],
+            E: [CallbackQueryHandler(step_e_choice, pattern=r"^e_")],
+            F: [CallbackQueryHandler(step_f_choice, pattern=r"^f_")],
+            G: [CallbackQueryHandler(step_g_choice, pattern=r"^g_")],
         },
-        fallbacks=[],
+        fallbacks=[CommandHandler("start", start)],
     )
     application.add_handler(conv_handler)
 
-    # First reminder after 10s, then every hour
-    application.job_queue.run_repeating(hourly_reminder, interval=3600, first=10)
-
     logger.info("Bot is starting…")
-    application.run_polling()
+    application.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
