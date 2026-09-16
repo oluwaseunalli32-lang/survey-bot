@@ -17,12 +17,12 @@ TOKEN = os.environ.get("BOT_TOKEN")
 # Conversation states (A = 0 … H = 7)
 A, B, C, D, E, F, G, H = range(8)
 
-# ─── Assets (upload these to your repo root, same folder as app.py) ─────
+# ─── Assets (must match the exact filenames in your repo) ────────────────
 PROOF_1 = "proof_screenshot_1.jpeg"
 PROOF_2 = "proof_screenshot_2.jpeg"
 ACCOUNT_ID_EXAMPLE = "account_id_example.jpeg"
 
-# ─── Links ────────────────────────────────────────────────────────────────
+# ─── Links ───────────────────────────────────────────────────────────────
 WINGO_URL = (
     "https://t.me/WinGo_funBot/GAME?startapp="
     "152284909961c9c9c39ec841604b9a7604ad39803da3bbbe1d3e1c36d199bcfa"
@@ -93,124 +93,108 @@ def kb(*rows):
     return InlineKeyboardMarkup(keyboard)
 
 
-# ─── Step A ──────────────────────────────────────────────────────────────
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Entry point: send Step A with proof screenshot 1."""
-    markup = kb([("Learn More", "a_learn"), ("No, Thanks", "a_no")])
-    try:
-        with open(PROOF_1, "rb") as photo:
-            await update.message.reply_photo(
-                photo=photo, caption=STEP_A_TEXT,
-                parse_mode="Markdown", reply_markup=markup,
+async def send_step(chat, text, markup, image_path=None):
+    """Send a step: photo if image_path given, otherwise text."""
+    if image_path:
+        try:
+            with open(image_path, "rb") as photo:
+                await chat.send_photo(
+                    photo=photo,
+                    caption=text,
+                    parse_mode="Markdown",
+                    reply_markup=markup,
+                )
+            return
+        except FileNotFoundError:
+            logger.error("Missing %s — sending text only", image_path)
+            await chat.send_message(
+                text, parse_mode="Markdown", reply_markup=markup,
             )
-    except FileNotFoundError:
-        logger.error("Missing %s — sending text only", PROOF_1)
-        await update.message.reply_text(
-            STEP_A_TEXT, parse_mode="Markdown", reply_markup=markup,
-        )
+            return
+    await chat.send_message(
+        text, parse_mode="Markdown", reply_markup=markup,
+    )
+
+
+async def replace_step(query, text, markup, image_path=None):
+    """Delete the previous step message, then send the next one."""
+    chat = query.message.chat
+    try:
+        await query.message.delete()
+    except Exception as e:
+        logger.warning("Could not delete previous message: %s", e)
+    await send_step(chat, text, markup, image_path)
+
+
+# ─── Step A (entry) ──────────────────────────────────────────────────────
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    markup = kb([("Learn More", "a_learn"), ("No, Thanks", "a_no")])
+    await send_step(update.message.chat, STEP_A_TEXT, markup, PROOF_1)
     return A
 
 
 async def step_a_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    # Remove buttons from Step A so they can't be tapped again
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
 
     if query.data == "a_no":
-        await query.message.reply_text("No problem. Thanks for your time!")
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await query.message.chat.send_message("No problem. Thanks for your time!")
         return ConversationHandler.END
 
-    # "Learn More" → Step B
-    markup = kb([("Tell Me More", "b_more")])
-    try:
-        with open(PROOF_2, "rb") as photo:
-            await query.message.reply_photo(
-                photo=photo, caption=STEP_B_TEXT,
-                parse_mode="Markdown", reply_markup=markup,
-            )
-    except FileNotFoundError:
-        logger.error("Missing %s — sending text only", PROOF_2)
-        await query.message.reply_text(
-            STEP_B_TEXT, parse_mode="Markdown", reply_markup=markup,
-        )
+    # "Learn More" → Step B (replace A)
+    await replace_step(
+        query, STEP_B_TEXT,
+        kb([("Tell Me More", "b_more")]),
+        PROOF_2,
+    )
     return B
 
 
-# ─── Step B ──────────────────────────────────────────────────────────────
+# ─── Step B → C ──────────────────────────────────────────────────────────
 async def step_b_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-    await query.message.reply_text(
-        STEP_C_TEXT, parse_mode="Markdown",
-        reply_markup=kb([("Continue", "c_next")]),
-    )
+    await replace_step(query, STEP_C_TEXT, kb([("Continue", "c_next")]))
     return C
 
 
-# ─── Step C ──────────────────────────────────────────────────────────────
+# ─── Step C → D ──────────────────────────────────────────────────────────
 async def step_c_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-    await query.message.reply_text(
-        STEP_D_TEXT, parse_mode="Markdown",
-        reply_markup=kb([("Continue", "d_next")]),
-    )
+    await replace_step(query, STEP_D_TEXT, kb([("Continue", "d_next")]))
     return D
 
 
-# ─── Step D ──────────────────────────────────────────────────────────────
+# ─── Step D → E ──────────────────────────────────────────────────────────
 async def step_d_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-    await query.message.reply_text(
-        STEP_E_TEXT, parse_mode="Markdown",
-        reply_markup=kb([("Continue", "e_next")]),
-    )
+    await replace_step(query, STEP_E_TEXT, kb([("Continue", "e_next")]))
     return E
 
 
-# ─── Step E ──────────────────────────────────────────────────────────────
+# ─── Step E → F ──────────────────────────────────────────────────────────
 async def step_e_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-    await query.message.reply_text(
-        STEP_F_TEXT, parse_mode="Markdown",
-        reply_markup=kb([("Continue — I'm Ready", "f_next")]),
+    await replace_step(
+        query, STEP_F_TEXT, kb([("Continue — I'm Ready", "f_next")]),
     )
     return F
 
 
-# ─── Step F ──────────────────────────────────────────────────────────────
+# ─── Step F → G ──────────────────────────────────────────────────────────
 async def step_f_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-    await query.message.reply_text(
-        STEP_G_TEXT, parse_mode="Markdown",
-        reply_markup=kb(
+    await replace_step(
+        query, STEP_G_TEXT,
+        kb(
             [("Go to Wingo", "g_wingo")],
             [("I've Finished Signing Up", "g_done")],
         ),
@@ -224,32 +208,21 @@ async def step_g_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "g_wingo":
-        # Send the $12 win/share message with a URL button to open Wingo
-        await query.message.reply_text(
+        # Send the $12 share message with a real URL button.
+        # Kept as a separate message so the user can still tap
+        # "I've Finished Signing Up" on the Step G message above.
+        await query.message.chat.send_message(
             WINGO_SHARE_TEXT,
             reply_markup=kb([("🎮 Open Wingo", WINGO_URL)]),
         )
-        # Stay in G — user can still tap "I've Finished Signing Up"
         return G
 
-    # "I've Finished Signing Up" → Step H
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-
-    markup = kb([("Message Admin", ADMIN_URL)])
-    try:
-        with open(ACCOUNT_ID_EXAMPLE, "rb") as photo:
-            await query.message.reply_photo(
-                photo=photo, caption=STEP_H_TEXT,
-                parse_mode="Markdown", reply_markup=markup,
-            )
-    except FileNotFoundError:
-        logger.error("Missing %s — sending text only", ACCOUNT_ID_EXAMPLE)
-        await query.message.reply_text(
-            STEP_H_TEXT, parse_mode="Markdown", reply_markup=markup,
-        )
+    # "I've Finished Signing Up" → Step H (replace G)
+    await replace_step(
+        query, STEP_H_TEXT,
+        kb([("Message Admin", ADMIN_URL)]),
+        ACCOUNT_ID_EXAMPLE,
+    )
     return H
 
 
@@ -257,7 +230,7 @@ async def step_g_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TOKEN).build()
 
-    # Clear any leftover webhook so polling can't conflict with a stale one
+    # Clear leftover webhook so polling can't conflict with a stale one
     application.bot.delete_webhook(drop_pending_updates=True)
 
     conv_handler = ConversationHandler(
