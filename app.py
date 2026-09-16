@@ -57,12 +57,11 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE, state
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    logger.info("Received callback: %s", query.data)   # helpful for debugging
+    logger.info("Received callback: %s", query.data)
     await query.answer()
 
     state_str, _answer = query.data.split(":")
     state = int(state_str)
-
     next_state = state + 1
 
     # When Q3 is answered, send the image and Q4 together as ONE message
@@ -89,13 +88,17 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if next_state in QUESTIONS:
         return await ask_question(update, context, next_state)
 
-    # All questions answered
+    # All questions answered — send a NEW message (do NOT edit the photo message)
     chat_id = query.message.chat_id
     completed_users.add(chat_id)
 
-    await query.edit_message_text(
-        f"Thank you! Here is your channel link: {CHANNEL_LINK}\n\n"
-        "Your countdown is starting below 👇"
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"✅ Thank you! You qualify.\n\n"
+            f"Here is your channel link: {CHANNEL_LINK}\n\n"
+            "Your countdown is starting below 👇"
+        ),
     )
     context.job_queue.run_once(countdown_job, 1, data=chat_id)
     return DONE
