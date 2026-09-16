@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
-# Conversation states
+# Conversation states (Q1 = 0, Q2 = 1, Q3 = 2, Q4 = 3, DONE = 4)
 Q1, Q2, Q3, Q4, DONE = range(5)
 
 QUESTIONS = {
@@ -57,17 +57,19 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE, state
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    logger.info("Received callback: %s", query.data)   # helpful for debugging
     await query.answer()
+
     state_str, _answer = query.data.split(":")
     state = int(state_str)
 
-    # Send the image right after Q3
+    # Send the image right after Q3 is answered
     if state == Q3:
         try:
             with open(IMAGE_PATH, "rb") as photo:
                 await query.message.reply_photo(photo=photo, caption=IMAGE_CAPTION)
         except FileNotFoundError:
-            logger.error("Image %s not found — skipping", IMAGE_PATH)
+            logger.error("Image %s not found — sending text instead", IMAGE_PATH)
             await query.message.reply_text(IMAGE_CAPTION)
 
     next_state = state + 1
@@ -87,12 +89,12 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def countdown_job(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.data
-    total = 6 * 60 * 60  # 6 hours
+    total = 6 * 60 * 60  # 6 hours in seconds
     msg = await context.bot.send_message(chat_id, fmt_time(total))
 
     remaining = total
     while remaining > 0:
-        # 60s steps normally, 5s steps in the final minute
+        # 60s steps normally, 5s steps in the final minute (avoids flood limits)
         step = 5 if remaining <= 60 else 60
         await asyncio.sleep(step)
         remaining = max(remaining - step, 0)
@@ -129,10 +131,10 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            Q1: [CallbackQueryHandler(handle_answer, pattern=r"^1:")],
-            Q2: [CallbackQueryHandler(handle_answer, pattern=r"^2:")],
-            Q3: [CallbackQueryHandler(handle_answer, pattern=r"^3:")],
-            Q4: [CallbackQueryHandler(handle_answer, pattern=r"^4:")],
+            Q1: [CallbackQueryHandler(handle_answer, pattern=r"^0:")],
+            Q2: [CallbackQueryHandler(handle_answer, pattern=r"^1:")],
+            Q3: [CallbackQueryHandler(handle_answer, pattern=r"^2:")],
+            Q4: [CallbackQueryHandler(handle_answer, pattern=r"^3:")],
         },
         fallbacks=[],
     )
@@ -141,6 +143,7 @@ def main():
     # First reminder after 10s, then every hour
     application.job_queue.run_repeating(hourly_reminder, interval=3600, first=10)
 
+    logger.info("Bot is starting…")
     application.run_polling()
 
 if __name__ == "__main__":
