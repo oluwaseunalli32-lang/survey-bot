@@ -27,7 +27,7 @@ WINGO_URL = (
     "https://t.me/WinGo_funBot/GAME?startapp="
     "152284909961c9c9c39ec841604b9a7604ad39803da3bbbe1d3e1c36d199bcfa"
 )
-ADMIN_URL = "https://t.me/ads2defiCEO"
+ADMIN_URL = "https://t.me/starkwingostaffNG"
 
 # ─── Text content ────────────────────────────────────────────────────────
 STEP_A_TEXT = (
@@ -208,9 +208,8 @@ async def step_g_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "g_wingo":
-        # Send the $12 share message with a real URL button.
-        # Kept as a separate message so the user can still tap
-        # "I've Finished Signing Up" on the Step G message above.
+        # Share message with URL button — sent as a new message so the user
+        # can still tap "I've Finished Signing Up" on the Step G message above
         await query.message.chat.send_message(
             WINGO_SHARE_TEXT,
             reply_markup=kb([("🎮 Open Wingo", WINGO_URL)]),
